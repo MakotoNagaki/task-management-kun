@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { Plus, X, Edit3, User, Calendar, Tag } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Plus, X, Edit3, User, Calendar, Tag, Info } from 'lucide-react';
 import './styles/globals.css';
 
 // 型定義（後でsrc/typesから import する）
@@ -219,6 +219,10 @@ const App: React.FC = () => {
               </div>
               <h1 className="text-2xl font-bold text-gray-900">タスク管理くん</h1>
               <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">v1.0</span>
+              <div className="flex items-center space-x-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
+                <Info className="w-3 h-3" />
+                <span>ネイティブD&D実装</span>
+              </div>
             </div>
             <div className="text-sm text-gray-600">
               社内タスク管理システム
