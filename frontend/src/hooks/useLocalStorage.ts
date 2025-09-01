@@ -1,9 +1,14 @@
 /**
- * useLocalStorage - ローカルストレージ管理カスタムフック
+ * useLocalStorage - ローカルストレージ管理カスタムフック（修正版）
  * タスク管理くん用データ永続化機能
+ * 
+ * 修正内容:
+ * - useEffect無限ループを修正
+ * - 依存関係配列を最適化
+ * - 初期化ロジックを改善
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 /**
  * ローカルストレージキーの定数
@@ -42,7 +47,7 @@ interface BackupData {
 }
 
 /**
- * useLocalStorage カスタムフック
+ * useLocalStorage カスタムフック（修正版）
  * @param key ストレージキー
  * @param initialValue 初期値
  * @returns [value, setValue, removeValue, isLoading, error]
@@ -54,9 +59,14 @@ export function useLocalStorage<T>(
   const [storedValue, setStoredValue] = useState<T>(initialValue);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // 初期化が完了したかのフラグ
+  const isInitialized = useRef(false);
 
-  // 初期化時にローカルストレージからデータを読み込み
+  // 初期化時にローカルストレージからデータを読み込み（key のみに依存）
   useEffect(() => {
+    if (isInitialized.current) return;
+    
     const loadFromStorage = () => {
       try {
         setIsLoading(true);
@@ -66,8 +76,10 @@ export function useLocalStorage<T>(
         if (item) {
           const parsedItem = JSON.parse(item);
           setStoredValue(parsedItem);
+          console.log(`📖 Loaded ${key} from localStorage`, parsedItem);
         } else {
           setStoredValue(initialValue);
+          console.log(`🆕 Using initial value for ${key}`, initialValue);
         }
       } catch (err) {
         console.error(`Error loading ${key} from localStorage:`, err);
@@ -75,13 +87,14 @@ export function useLocalStorage<T>(
         setStoredValue(initialValue);
       } finally {
         setIsLoading(false);
+        isInitialized.current = true;
       }
     };
 
     loadFromStorage();
-  }, [key, initialValue]);
+  }, [key]); // initialValue を依存関係から除外
 
-  // 値を設定する関数
+  // 値を設定する関数（useCallback で安定した参照を保持）
   const setValue = useCallback((value: T | ((prev: T) => T)) => {
     try {
       setError(null);
@@ -90,8 +103,7 @@ export function useLocalStorage<T>(
       setStoredValue(valueToStore);
       window.localStorage.setItem(key, JSON.stringify(valueToStore));
       
-      // 保存成功をデバッグログに出力
-      console.log(`✅ Saved ${key} to localStorage`, valueToStore);
+      console.log(`💾 Saved ${key} to localStorage`);
       
     } catch (err) {
       console.error(`Error saving ${key} to localStorage:`, err);
@@ -150,7 +162,7 @@ export function useDataBackup() {
     try {
       const backupData: BackupData = {
         timestamp: new Date().toISOString(),
-        version: '3.0',
+        version: '3.1',
         data: {
           tasks: JSON.parse(localStorage.getItem(STORAGE_KEYS.TASKS) || '[]'),
           users: JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]'),
@@ -315,7 +327,7 @@ export function useDataBackup() {
 }
 
 /**
- * 自動保存機能付きのローカルストレージフック
+ * 自動保存機能付きのローカルストレージフック（修正版）
  */
 export function useAutoSaveLocalStorage<T>(
   key: string,
@@ -324,22 +336,32 @@ export function useAutoSaveLocalStorage<T>(
 ) {
   const [value, setValue, removeValue, isLoading, error] = useLocalStorage(key, initialValue);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 自動保存のためのタイマー
-  useEffect(() => {
-    if (isLoading) return;
-
-    const timer = setTimeout(() => {
-      setIsSaving(false);
-    }, autoSaveDelay);
-
-    return () => clearTimeout(timer);
-  }, [value, isLoading, autoSaveDelay]);
-
+  // 自動保存のためのタイマー（最適化版）
   const setValueWithAutoSave = useCallback((newValue: T | ((prev: T) => T)) => {
     setIsSaving(true);
     setValue(newValue);
-  }, [setValue]);
+    
+    // 既存のタイマーをクリア
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    // 新しいタイマーを設定
+    saveTimeoutRef.current = setTimeout(() => {
+      setIsSaving(false);
+    }, autoSaveDelay);
+  }, [setValue, autoSaveDelay]);
+
+  // コンポーネントのアンマウント時にタイマーをクリア
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return [value, setValueWithAutoSave, removeValue, isLoading, error, isSaving] as const;
 }

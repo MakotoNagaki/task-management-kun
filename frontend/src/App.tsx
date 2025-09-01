@@ -1,21 +1,49 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Plus, X, Edit3, User, Calendar, Tag, Info, Save, XCircle, AlertCircle, Settings, Users, ChevronDown, UserCheck, UsersIcon, Database, Loader } from 'lucide-react';
 import './styles/globals.css';
+import './styles/login.css';
 
 // コンポーネントとフックをインポート
 import DataManagement from './components/DataManagement';
+import LoginScreen from './components/LoginScreen';
 import { useLocalStorage, useAutoSaveLocalStorage, STORAGE_KEYS } from './hooks/useLocalStorage';
+import { useAuth } from './hooks/useAuth';
+import { Auth } from './utils/auth';
 
 // 型定義をインポート
 import type { 
   Task, TaskList, DraggedCard, User as UserType, Team, UserSession, 
   NewTaskForm, EditTaskForm, AssigneeSelection, TeamWithMembers 
 } from './types';
+import type { AuthCredentials } from './types/auth';
 
 /**
- * タスク管理くん - データ永続化対応版
+ * タスク管理くん - データ永続化対応版（修正版）
+ * 
+ * 修正内容:
+ * - useEffect 無限ループを解消
+ * - 初期データ設定ロジックを最適化
+ * - 依存関係配列を修正
  */
 const App: React.FC = () => {
+  // ============================================
+  // 認証管理
+  // ============================================
+  
+  const {
+    isAuthenticated,
+    currentUser: authenticatedUser,
+    isLoading: authLoading,
+    login,
+    logout,
+    setUsers,
+    requiresAuth,
+    hasPermission,
+    isAdmin,
+    getRememberedEmail,
+    authError
+  } = useAuth();
+
   // ============================================
   // データ永続化フック
   // ============================================
@@ -24,138 +52,119 @@ const App: React.FC = () => {
   const [persistedLists, setPersistedLists, , listsLoading] = useAutoSaveLocalStorage<TaskList[]>(STORAGE_KEYS.TASKS, []);
   const [persistedUsers, setPersistedUsers, , usersLoading] = useLocalStorage<UserType[]>(STORAGE_KEYS.USERS, []);
   const [persistedTeams, setPersistedTeams, , teamsLoading] = useLocalStorage<Team[]>(STORAGE_KEYS.TEAMS, []);
-  const [persistedCurrentUser, setPersistedCurrentUser, , currentUserLoading] = useLocalStorage<UserType | null>(STORAGE_KEYS.CURRENT_USER, null);
   
-  const isDataLoading = listsLoading || usersLoading || teamsLoading || currentUserLoading;
+  const isDataLoading = listsLoading || usersLoading || teamsLoading;
 
   // ============================================
-  // モックデータの定義（初期データ用）
+  // モックデータの定義（セキュア認証対応版）
   // ============================================
   
-  const getInitialUsers = useCallback((): UserType[] => [
-    {
-      id: 'user_1',
-      name: '田中太郎',
-      email: 'tanaka@company.com',
-      role: 'manager',
-      department: '開発部',
-      position: 'シニアエンジニア',
-      teamIds: ['team_1', 'team_3'],
-      primaryTeamId: 'team_1',
-      isActive: true,
-      createdAt: new Date('2024-01-15'),
-      updatedAt: new Date('2024-09-01'),
-      preferences: {
-        theme: 'light',
-        language: 'ja',
-        notifications: { email: true, slack: true, browser: true, sound: false, dueDate: true, taskAssigned: true, taskCompleted: true, teamMention: true },
-        defaultAssigneeType: 'user',
-        workingHours: { start: '09:00', end: '18:00' }
-      }
-    },
-    {
-      id: 'user_2',
-      name: '佐藤花子',
-      email: 'sato@company.com',
-      role: 'member',
-      department: '開発部',
-      position: 'エンジニア',
-      teamIds: ['team_1'],
-      primaryTeamId: 'team_1',
-      isActive: true,
-      createdAt: new Date('2024-02-01'),
-      updatedAt: new Date('2024-08-25'),
-      preferences: {
-        theme: 'dark',
-        language: 'ja',
-        notifications: { email: true, slack: true, browser: true, sound: true, dueDate: true, taskAssigned: true, taskCompleted: false, teamMention: true },
-        defaultAssigneeType: 'user',
-        workingHours: { start: '10:00', end: '19:00' }
-      }
-    },
-    {
-      id: 'user_3',
-      name: '鈴木一郎',
-      email: 'suzuki@company.com',
-      role: 'member',
-      department: '開発部',
-      position: 'エンジニア',
-      teamIds: ['team_1'],
-      primaryTeamId: 'team_1',
-      isActive: true,
-      createdAt: new Date('2024-03-10'),
-      updatedAt: new Date('2024-08-30'),
-      preferences: {
-        theme: 'auto',
-        language: 'ja',
-        notifications: { email: false, slack: true, browser: true, sound: false, dueDate: true, taskAssigned: true, taskCompleted: true, teamMention: false },
-        defaultAssigneeType: 'team',
-        workingHours: { start: '09:30', end: '18:30' }
-      }
-    },
-    {
-      id: 'user_4',
-      name: '高橋美穂',
-      email: 'takahashi@company.com',
-      role: 'member',
-      department: 'デザイン部',
-      position: 'UIデザイナー',
-      teamIds: ['team_2'],
-      primaryTeamId: 'team_2',
-      isActive: true,
-      createdAt: new Date('2024-01-20'),
-      updatedAt: new Date('2024-08-28'),
-      preferences: {
-        theme: 'light',
-        language: 'ja',
-        notifications: { email: true, slack: false, browser: true, sound: true, dueDate: true, taskAssigned: true, taskCompleted: true, teamMention: true },
-        defaultAssigneeType: 'user',
-        workingHours: { start: '10:00', end: '18:00' }
-      }
-    },
-    {
-      id: 'user_5',
-      name: '山田健志',
-      email: 'yamada@company.com',
-      role: 'member',
-      department: 'デザイン部',
-      position: 'グラフィックデザイナー',
-      teamIds: ['team_2'],
-      primaryTeamId: 'team_2',
-      isActive: true,
-      createdAt: new Date('2024-02-15'),
-      updatedAt: new Date('2024-09-01'),
-      preferences: {
-        theme: 'dark',
-        language: 'ja',
-        notifications: { email: true, slack: true, browser: false, sound: false, dueDate: true, taskAssigned: true, taskCompleted: false, teamMention: true },
-        defaultAssigneeType: 'team',
-        workingHours: { start: '09:00', end: '17:00' }
-      }
-    },
-    {
-      id: 'user_6',
-      name: '渡辺さくら',
-      email: 'watanabe@company.com',
-      role: 'admin',
-      department: '企画部',
-      position: 'プロジェクトマネージャー',
-      teamIds: ['team_3'],
-      primaryTeamId: 'team_3',
-      isActive: true,
-      createdAt: new Date('2024-01-01'),
-      updatedAt: new Date('2024-08-31'),
-      preferences: {
-        theme: 'light',
-        language: 'ja',
-        notifications: { email: true, slack: true, browser: true, sound: true, dueDate: true, taskAssigned: true, taskCompleted: true, teamMention: true },
-        defaultAssigneeType: 'both',
-        workingHours: { start: '08:30', end: '17:30' }
-      }
-    }
-  ], []);
+  // 初期ユーザーデータ（パスワードハッシュ付き）
+  const [initialUsers, setInitialUsers] = useState<UserType[]>([]);
+  
+  // パスワードハッシュ付きの初期ユーザーデータを生成
+  useEffect(() => {
+    const generateSecureUsers = async () => {
+      try {
+        // デフォルト管理者アカウント
+        const adminUser = await Auth.DefaultUserCreator.createDefaultAdmin();
+        
+        // テストユーザーアカウント
+        const testUsers = await Auth.DefaultUserCreator.createTestUsers();
+        
+        // 既存ユーザーデータにパスワードハッシュを追加
+        const legacyUsers = [
+          {
+            id: 'user_4',
+            name: '高橋美穂',
+            email: 'takahashi@company.com',
+            role: 'member' as const,
+            department: 'デザイン部',
+            position: 'UIデザイナー',
+            teamIds: ['team_2'],
+            primaryTeamId: 'team_2',
+            password: 'password123'
+          },
+          {
+            id: 'user_5', 
+            name: '山田健志',
+            email: 'yamada@company.com',
+            role: 'member' as const,
+            department: 'デザイン部',
+            position: 'グラフィックデザイナー',
+            teamIds: ['team_2'],
+            primaryTeamId: 'team_2',
+            password: 'password123'
+          },
+          {
+            id: 'user_6',
+            name: '渡辺さくら',
+            email: 'watanabe@company.com',
+            role: 'admin' as const,
+            department: '企画部',
+            position: 'プロジェクトマネージャー',
+            teamIds: ['team_3'],
+            primaryTeamId: 'team_3',
+            password: 'admin123'
+          }
+        ];
 
-  const getInitialTeams = useCallback((): Team[] => [
+        const secureUsers: UserType[] = [];
+        
+        // レガシーユーザーのパスワードをハッシュ化
+        for (const legacyUser of legacyUsers) {
+          const hashedPassword = await Auth.PasswordHasher.hashPassword(legacyUser.password);
+          
+          secureUsers.push({
+            id: legacyUser.id,
+            name: legacyUser.name,
+            email: legacyUser.email,
+            hashedPassword,
+            role: legacyUser.role,
+            department: legacyUser.department,
+            position: legacyUser.position,
+            teamIds: legacyUser.teamIds,
+            primaryTeamId: legacyUser.primaryTeamId,
+            isActive: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            preferences: {
+              theme: 'light',
+              language: 'ja',
+              notifications: {
+                email: true,
+                slack: true,
+                browser: true,
+                sound: true,
+                dueDate: true,
+                taskAssigned: true,
+                taskCompleted: true,
+                teamMention: true
+              },
+              defaultAssigneeType: legacyUser.role === 'admin' ? 'both' : 'user',
+              workingHours: {
+                start: '09:00',
+                end: '18:00'
+              }
+            }
+          });
+        }
+
+        // 全ユーザーを統合
+        const allUsers = [adminUser, ...testUsers, ...secureUsers];
+        setInitialUsers(allUsers);
+        
+        console.log('セキュアユーザーデータを生成しました');
+      } catch (error) {
+        console.error('ユーザーデータ生成エラー:', error);
+        setInitialUsers([]);
+      }
+    };
+
+    generateSecureUsers();
+  }, []);
+
+  const initialTeams = useMemo((): Team[] => [
     {
       id: 'team_1',
       name: '開発チーム',
@@ -197,7 +206,7 @@ const App: React.FC = () => {
     }
   ], []);
 
-  const getInitialLists = useCallback((): TaskList[] => [
+  const initialLists = useMemo((): TaskList[] => [
     {
       id: '1',
       title: 'To Do',
@@ -216,7 +225,8 @@ const App: React.FC = () => {
           tags: ['企画', '高優先度', 'ドキュメント'],
           priority: 'high',
           status: 'todo',
-          createdAt: new Date('2024-09-01')
+          createdAt: new Date('2024-09-01'),
+          updatedAt: new Date('2024-09-01')
         },
         {
           id: '2',
@@ -231,7 +241,8 @@ const App: React.FC = () => {
           tags: ['開発', 'DB', '設計'],
           priority: 'medium',
           status: 'todo',
-          createdAt: new Date('2024-08-30')
+          createdAt: new Date('2024-08-30'),
+          updatedAt: new Date('2024-08-30')
         }
       ]
     },
@@ -254,7 +265,8 @@ const App: React.FC = () => {
           tags: ['開発', 'API', 'ドキュメント'],
           priority: 'high',
           status: 'in-progress',
-          createdAt: new Date('2024-08-25')
+          createdAt: new Date('2024-08-25'),
+          updatedAt: new Date('2024-08-25')
         }
       ]
     },
@@ -276,62 +288,109 @@ const App: React.FC = () => {
           tags: ['企画', '完了'],
           priority: 'medium',
           status: 'done',
-          createdAt: new Date('2024-08-20')
+          createdAt: new Date('2024-08-20'),
+          updatedAt: new Date('2024-08-20')
         }
       ]
     }
   ], []);
 
   // よく使うタグ
-  const commonTags = [
+  const commonTags = useMemo(() => [
     '企画', '開発', 'デザイン', 'テスト', 
     'ドキュメント', 'API', 'DB', '高優先度', 
     '緊急', 'レビュー', 'リリース', 'バグ修正',
     'UI/UX', 'インフラ', 'セキュリティ'
-  ];
+  ], []);
 
   // ============================================
   // 状態管理（永続化データまたは初期データ）
   // ============================================
   
   // 実際に使用するデータ（永続化されたデータまたは初期データ）
-  const users = persistedUsers.length > 0 ? persistedUsers : getInitialUsers();
-  const teams = persistedTeams.length > 0 ? persistedTeams : getInitialTeams();
-  const lists = persistedLists.length > 0 ? persistedLists : getInitialLists();
+  const users = persistedUsers.length > 0 ? persistedUsers : initialUsers;
+  const teams = persistedTeams.length > 0 ? persistedTeams : initialTeams;
+  const lists = persistedLists.length > 0 ? persistedLists : initialLists;
   
-  // 現在のユーザー（永続化データまたは初期ユーザー）
-  const currentUser = persistedCurrentUser || users[0];
+  // 現在のユーザー（認証されたユーザー）
+  const currentUser = authenticatedUser;
 
-  // 初期データを永続化（初回のみ）
+  // ============================================
+  // 初期データ設定とセキュア認証統合
+  // ============================================
+  
   useEffect(() => {
-    if (!isDataLoading) {
-      if (persistedUsers.length === 0) {
-        setPersistedUsers(getInitialUsers());
-      }
-      if (persistedTeams.length === 0) {
-        setPersistedTeams(getInitialTeams());
-      }
-      if (persistedLists.length === 0) {
-        setPersistedLists(getInitialLists());
-      }
-      if (!persistedCurrentUser) {
-        setPersistedCurrentUser(getInitialUsers()[0]);
-      }
+    // ローディング中は何もしない
+    if (isDataLoading || initialUsers.length === 0) return;
+    
+    let hasChanges = false;
+    
+    // 初期データが未設定の場合のみ設定
+    if (persistedUsers.length === 0) {
+      console.log('セキュアユーザーデータを初期化');
+      setPersistedUsers(initialUsers);
+      hasChanges = true;
+    }
+    
+    if (persistedTeams.length === 0) {
+      console.log('初期チームデータを設定');
+      setPersistedTeams(initialTeams);
+      hasChanges = true;
+    }
+    
+    if (persistedLists.length === 0) {
+      console.log('初期タスクデータを設定');
+      setPersistedLists(initialLists);
+      hasChanges = true;
+    }
+    
+    // 認証フックにユーザーリストを設定
+    if (users.length > 0) {
+      setUsers(users);
+    }
+    
+    if (hasChanges) {
+      console.log('初期データセットアップ完了');
     }
   }, [
     isDataLoading,
+    initialUsers.length,
     persistedUsers.length,
-    persistedTeams.length, 
+    persistedTeams.length,
     persistedLists.length,
-    persistedCurrentUser,
+    users,
+    setUsers,
     setPersistedUsers,
     setPersistedTeams,
     setPersistedLists,
-    setPersistedCurrentUser,
-    getInitialUsers,
-    getInitialTeams,
-    getInitialLists
+    initialTeams,
+    initialLists
   ]);
+
+  // ============================================
+  // 認証処理
+  // ============================================
+
+  /**
+   * ログイン処理
+   */
+  const handleLogin = useCallback(async (credentials: AuthCredentials): Promise<void> => {
+    try {
+      const result = await login(credentials);
+      if (result.success) {
+        console.log('ログイン成功');
+      } else {
+        console.error('ログイン失敗:', result.error?.message);
+      }
+    } catch (error) {
+      console.error('ログイン処理エラー:', error);
+    }
+  }, [login]);
+
+  /**
+   * 管理者モードの切り替え
+   */
+  const [showUserManagement, setShowUserManagement] = useState(false);
 
   // 現在のユーザーセッション
   const [userSession, setUserSession] = useState<UserSession>({
@@ -395,7 +454,7 @@ const App: React.FC = () => {
   const [isDataManagementOpen, setIsDataManagementOpen] = useState(false);
 
   // ============================================
-  // データ更新時の永続化処理
+  // データ更新時の永続化処理（useCallback で最適化）
   // ============================================
 
   // リストデータが変更された時に自動保存
@@ -413,30 +472,25 @@ const App: React.FC = () => {
     setPersistedTeams(newTeams);
   }, [setPersistedTeams]);
 
-  // 現在のユーザーを更新
-  const updateCurrentUser = useCallback((newCurrentUser: UserType) => {
-    setPersistedCurrentUser(newCurrentUser);
-  }, [setPersistedCurrentUser]);
-
   // ============================================
-  // ヘルパー関数
+  // ヘルパー関数（useCallback で最適化）
   // ============================================
 
-  const getTeamById = (teamId: string): Team | undefined => {
+  const getTeamById = useCallback((teamId: string): Team | undefined => {
     return teams.find(team => team.id === teamId);
-  };
+  }, [teams]);
 
-  const getUserById = (userId: string): UserType | undefined => {
+  const getUserById = useCallback((userId: string): UserType | undefined => {
     return users.find(user => user.id === userId);
-  };
+  }, [users]);
 
-  const getTeamMembers = (teamId: string): UserType[] => {
+  const getTeamMembers = useCallback((teamId: string): UserType[] => {
     const team = getTeamById(teamId);
     if (!team) return [];
     return team.memberIds.map(userId => getUserById(userId)).filter(Boolean) as UserType[];
-  };
+  }, [getTeamById, getUserById]);
 
-  const generateAssigneeName = (selection: AssigneeSelection): string => {
+  const generateAssigneeName = useCallback((selection: AssigneeSelection): string => {
     const { type, userId, teamId } = selection;
     
     if (type === 'user' && userId) {
@@ -456,38 +510,38 @@ const App: React.FC = () => {
     }
     
     return '';
-  };
+  }, [getUserById, getTeamById]);
 
   // ============================================
   // ドラッグ&ドロップ機能
   // ============================================
 
-  const handleDragStart = (e: React.DragEvent, card: Task, sourceListId: string) => {
+  const handleDragStart = useCallback((e: React.DragEvent, card: Task, sourceListId: string) => {
     const dragData: DraggedCard = { ...card, sourceListId };
     setDraggedCard(dragData);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', '');
-  };
+  }, []);
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-  };
+  }, []);
 
-  const handleDragEnter = (e: React.DragEvent, listId: string) => {
+  const handleDragEnter = useCallback((e: React.DragEvent, listId: string) => {
     e.preventDefault();
     dragCounter.current++;
     setDraggedOver(listId);
-  };
+  }, []);
 
-  const handleDragLeave = () => {
+  const handleDragLeave = useCallback(() => {
     dragCounter.current--;
     if (dragCounter.current === 0) {
       setDraggedOver(null);
     }
-  };
+  }, []);
 
-  const handleDrop = (e: React.DragEvent, targetListId: string) => {
+  const handleDrop = useCallback((e: React.DragEvent, targetListId: string) => {
     e.preventDefault();
     dragCounter.current = 0;
     setDraggedOver(null);
@@ -516,13 +570,13 @@ const App: React.FC = () => {
 
     updateLists(newLists);
     setDraggedCard(null);
-  };
+  }, [draggedCard, lists, updateLists]);
 
   // ============================================
   // タスク管理機能
   // ============================================
 
-  const addEnhancedCard = (listId: string) => {
+  const addEnhancedCard = useCallback((listId: string) => {
     if (!newTaskForm.title.trim()) return;
 
     const assigneeName = generateAssigneeName(newTaskForm.assigneeSelection);
@@ -541,7 +595,8 @@ const App: React.FC = () => {
       tags: newTaskForm.tags,
       priority: newTaskForm.priority,
       status: 'todo',
-      createdAt: new Date()
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
 
     const newLists = lists.map(list => 
@@ -551,54 +606,65 @@ const App: React.FC = () => {
     );
 
     updateLists(newLists);
-    resetNewTaskForm();
+    
+    // フォームをリセット
+    setNewTaskForm({
+      title: '',
+      description: '',
+      assigneeSelection: { type: 'user' },
+      dueDate: '',
+      tags: [],
+      priority: 'medium',
+      selectedTeamId: currentUser?.primaryTeamId || '',
+      selectedUserIds: []
+    });
+    
     setIsAddingCard(prev => ({ ...prev, [listId]: false }));
-  };
+  }, [newTaskForm, lists, updateLists, generateAssigneeName, currentUser]);
 
-  const deleteCard = (listId: string, cardId: string) => {
-    if (!window.confirm('このタスクを削除しますか？')) return;
-
-    const newLists = lists.map(list => 
-      list.id === listId 
+  const deleteCard = useCallback((listId: string, cardId: string) => {
+    const newLists = lists.map(list =>
+      list.id === listId
         ? { ...list, cards: list.cards.filter(card => card.id !== cardId) }
         : list
     );
-
     updateLists(newLists);
-  };
+  }, [lists, updateLists]);
 
-  const startEdit = (card: Task) => {
-    setEditingCard(card.id);
+  const startEditCard = useCallback((card: Task) => {
     setEditForm({
       title: card.title,
       description: card.description || '',
       assigneeSelection: {
         type: card.assigneeType,
         userId: card.assigneeUserId,
-        teamId: card.assigneeTeamId
+        teamId: card.assigneeTeamId,
+        userName: card.assigneeName,
+        teamName: card.assigneeName
       },
       dueDate: card.dueDate || '',
       tags: card.tags || [],
-      priority: card.priority || 'medium',
-      status: card.status || 'todo',
+      priority: card.priority,
+      status: card.status,
       selectedTeamId: card.assigneeTeamId || '',
       selectedUserIds: card.assigneeUserId ? [card.assigneeUserId] : []
     });
-  };
+    setEditingCard(card.id);
+  }, []);
 
-  const saveEdit = (listId: string, cardId: string) => {
+  const saveEditCard = useCallback((listId: string, cardId: string) => {
     if (!editForm.title.trim()) return;
 
     const assigneeName = generateAssigneeName(editForm.assigneeSelection);
 
-    const newLists = lists.map(list => 
-      list.id === listId 
-        ? { 
-            ...list, 
-            cards: list.cards.map(card => 
-              card.id === cardId 
-                ? { 
-                    ...card, 
+    const newLists = lists.map(list =>
+      list.id === listId
+        ? {
+            ...list,
+            cards: list.cards.map(card =>
+              card.id === cardId
+                ? {
+                    ...card,
                     title: editForm.title.trim(),
                     description: editForm.description.trim(),
                     assigneeType: editForm.assigneeSelection.type,
@@ -610,7 +676,7 @@ const App: React.FC = () => {
                     priority: editForm.priority,
                     status: editForm.status,
                     updatedAt: new Date()
-                  } 
+                  }
                 : card
             )
           }
@@ -618,94 +684,58 @@ const App: React.FC = () => {
     );
 
     updateLists(newLists);
-    cancelEdit();
-  };
-
-  const cancelEdit = () => {
     setEditingCard(null);
-    setEditForm({
-      title: '',
-      description: '',
-      assigneeSelection: { type: 'user' },
-      dueDate: '',
-      tags: [],
-      priority: 'medium',
-      status: 'todo',
-      selectedTeamId: '',
-      selectedUserIds: []
-    });
-  };
+  }, [editForm, lists, updateLists, generateAssigneeName]);
 
-  const cancelAddCard = (listId: string) => {
-    setIsAddingCard(prev => ({ ...prev, [listId]: false }));
-    resetNewTaskForm();
-  };
-
-  const resetNewTaskForm = () => {
-    setNewTaskForm({
-      title: '',
-      description: '',
-      assigneeSelection: { type: 'user' },
-      dueDate: '',
-      tags: [],
-      priority: 'medium',
-      selectedTeamId: currentUser?.primaryTeamId || '',
-      selectedUserIds: []
-    });
-  };
-
-  // ============================================
-  // ユーザー切り替え機能
-  // ============================================
-
-  const switchUser = (userId: string) => {
-    const user = getUserById(userId);
-    if (user) {
-      updateCurrentUser(user);
-      setNewTaskForm(prev => ({
-        ...prev,
-        selectedTeamId: user.primaryTeamId || ''
-      }));
-    }
-  };
-
-  // ============================================
-  // データ復元後のコールバック
-  // ============================================
-
-  const handleDataImported = useCallback(() => {
-    // ページをリロードしてデータを再読み込み
-    window.location.reload();
+  const cancelEdit = useCallback(() => {
+    setEditingCard(null);
   }, []);
 
-  // ============================================
-  // ユーティリティ関数
-  // ============================================
+  // タグ追加機能
+  const addTag = useCallback((tag: string, isEditMode = false) => {
+    if (isEditMode) {
+      setEditForm(prev => ({
+        ...prev,
+        tags: prev.tags.includes(tag) ? prev.tags : [...prev.tags, tag]
+      }));
+    } else {
+      setNewTaskForm(prev => ({
+        ...prev,
+        tags: prev.tags.includes(tag) ? prev.tags : [...prev.tags, tag]
+      }));
+    }
+  }, []);
 
-  const getTotalTasks = () => {
-    return lists.reduce((total, list) => total + list.cards.length, 0);
-  };
+  const removeTag = useCallback((tagToRemove: string, isEditMode = false) => {
+    if (isEditMode) {
+      setEditForm(prev => ({
+        ...prev,
+        tags: prev.tags.filter(tag => tag !== tagToRemove)
+      }));
+    } else {
+      setNewTaskForm(prev => ({
+        ...prev,
+        tags: prev.tags.filter(tag => tag !== tagToRemove)
+      }));
+    }
+  }, []);
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('ja-JP');
-  };
-
-  const getPriorityLabel = (priority?: string) => {
+  // 優先度表示用のヘルパー
+  const getPriorityText = useCallback((priority: string) => {
     switch (priority) {
       case 'high': return '高';
       case 'medium': return '中';
       case 'low': return '低';
       default: return '';
     }
-  };
+  }, []);
 
   // ============================================
-  // ローディング画面
+  // ローディング画面と認証チェック
   // ============================================
 
-  if (isDataLoading) {
+  // データローディング中
+  if (isDataLoading || initialUsers.length === 0) {
     return (
       <div className="loading-screen">
         <div className="loading-content">
@@ -715,10 +745,42 @@ const App: React.FC = () => {
           <h1 className="app-title">タスク管理くん</h1>
           <div className="loading-indicator">
             <Loader size={24} className="spinning" />
-            <span>データを読み込んでいます...</span>
+            <span>セキュアシステムを初期化中...</span>
           </div>
         </div>
       </div>
+    );
+  }
+
+  // 認証チェック中
+  if (authLoading) {
+    return (
+      <div className="loading-screen">
+        <div className="loading-content">
+          <div className="app-icon loading">
+            <Tag size={32} />
+          </div>
+          <h1 className="app-title">タスク管理くん</h1>
+          <div className="loading-indicator">
+            <Loader size={24} className="spinning" />
+            <span>認証情報を確認中...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 未認証の場合はログイン画面を表示
+  if (!isAuthenticated || !currentUser) {
+    return (
+      <LoginScreen
+        onLogin={handleLogin}
+        isLoading={authLoading}
+        error={authError?.message || null}
+        rememberedEmail={getRememberedEmail()}
+        onShowUserManagement={() => setShowUserManagement(true)}
+        isAdminSetupMode={users.length === 0}
+      />
     );
   }
 
@@ -736,10 +798,10 @@ const App: React.FC = () => {
               <Tag size={28} />
             </div>
             <h1 className="app-title">タスク管理くん</h1>
-            <span className="version-badge">v3.1</span>
+            <span className="version-badge">v3.3</span>
             <div className="status-badge">
               <Info size={12} />
-              <span>データ永続化対応</span>
+              <span>セキュア認証版</span>
             </div>
           </div>
           
@@ -750,49 +812,64 @@ const App: React.FC = () => {
                 <User size={16} />
                 <span>{currentUser?.name}</span>
                 <span className="user-role">({currentUser?.role})</span>
+                {isAuthenticated && (
+                  <span className="auth-indicator" title="ログイン中">🔒</span>
+                )}
               </div>
               
               <div className="header-actions">
-                <button
-                  onClick={() => setIsDataManagementOpen(true)}
-                  className="header-action-btn"
-                  title="データ管理"
-                >
-                  <Database size={18} />
-                </button>
+                {/* データ管理（管理者・マネージャー以上） */}
+                {hasPermission('export_data') && (
+                  <button
+                    onClick={() => setIsDataManagementOpen(true)}
+                    className="header-action-btn"
+                    title="データ管理"
+                  >
+                    <Database size={18} />
+                  </button>
+                )}
+                
+                {/* ユーザー切り替え（認証済みユーザーのみ） */}
                 <button
                   onClick={() => setIsUserSettingsOpen(true)}
                   className="header-action-btn"
-                  title="ユーザー設定"
+                  title="アカウント設定"
                 >
-                  <Settings size={18} />
+                  <UserCheck size={18} />
                 </button>
+                
+                {/* チーム管理（マネージャー以上） */}
+                {hasPermission('manage_teams') && (
+                  <button
+                    onClick={() => setIsTeamManagementOpen(true)}
+                    className="header-action-btn"
+                    title="チーム管理"
+                  >
+                    <UsersIcon size={18} />
+                  </button>
+                )}
+
+                {/* ログアウト */}
                 <button
-                  onClick={() => setIsTeamManagementOpen(true)}
-                  className="header-action-btn"
-                  title="チーム管理"
+                  onClick={logout}
+                  className="header-action-btn logout-btn"
+                  title="ログアウト"
                 >
-                  <Users size={18} />
+                  <X size={18} />
                 </button>
               </div>
-            </div>
-            
-            <div className="header-subtitle">
-              社内タスク管理システム | 総タスク数: {getTotalTasks()}
             </div>
           </div>
         </div>
       </header>
 
       {/* メインコンテンツ */}
-      <main className="main-container">
-        <div className="kanban-board">
+      <main className="main-content">
+        <div className="lists-container">
           {lists.map(list => (
             <div
               key={list.id}
-              className={`list-container ${list.color} ${
-                draggedOver === list.id ? 'drag-over' : ''
-              }`}
+              className={`list ${list.color} ${draggedOver === list.id ? 'drag-over' : ''}`}
               onDragOver={handleDragOver}
               onDragEnter={(e) => handleDragEnter(e, list.id)}
               onDragLeave={handleDragLeave}
@@ -800,35 +877,37 @@ const App: React.FC = () => {
             >
               {/* リストヘッダー */}
               <div className="list-header">
-                <h2 className="list-title">{list.title}</h2>
-                <div className="list-actions">
-                  <span className="task-count">{list.cards.length}</span>
+                <h2 className="list-title">
+                  {list.title}
+                  <span className="card-count">({list.cards.length})</span>
+                </h2>
+                {/* タスク作成権限チェック */}
+                {hasPermission('create_task') && (
                   <button
                     onClick={() => setIsAddingCard(prev => ({ ...prev, [list.id]: true }))}
                     className="add-button"
-                    title={`${list.title}に新しいタスクを追加`}
                     disabled={isAddingCard[list.id]}
+                    title="新しいタスクを追加"
                   >
-                    <Plus size={18} />
+                    <Plus size={20} />
                   </button>
-                </div>
+                )}
               </div>
 
-              {/* タスクリスト */}
+              {/* タスク一覧 */}
               <div className="tasks-container">
-                {list.cards.map((card, index) => (
+                {list.cards.map(card => (
                   <div
                     key={card.id}
+                    className={`task-card ${editingCard === card.id ? 'editing' : ''} ${draggedCard?.id === card.id ? 'dragging' : ''}`}
                     draggable={editingCard !== card.id}
                     onDragStart={(e) => handleDragStart(e, card, list.id)}
-                    className={`task-card ${
-                      draggedCard && draggedCard.id === card.id ? 'dragging' : ''
-                    } ${editingCard === card.id ? 'editing' : ''}`}
                   >
                     {editingCard === card.id ? (
-                      // 編集モード（簡略版）
+                      /* 編集モード */
                       <div className="enhanced-form-container">
                         <div className="form-grid">
+                          {/* タイトル編集 */}
                           <div className="form-row">
                             <label className="form-label">
                               <span className="label-text">タスク名 <span className="required">*</span></span>
@@ -842,165 +921,244 @@ const App: React.FC = () => {
                             </label>
                           </div>
 
-                          <div className="form-actions enhanced">
+                          {/* 説明編集 */}
+                          <div className="form-row">
+                            <label className="form-label">
+                              <span className="label-text">詳細説明</span>
+                              <textarea
+                                value={editForm.description}
+                                onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                                className="form-textarea enhanced"
+                                rows={3}
+                              />
+                            </label>
+                          </div>
+
+                          {/* 担当者選択編集 */}
+                          <div className="form-row">
+                            <label className="form-label">
+                              <span className="label-text">担当者タイプ</span>
+                              <div className="assignee-type-buttons">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditForm(prev => ({
+                                    ...prev,
+                                    assigneeSelection: { type: 'user' }
+                                  }))}
+                                  className={`assignee-type-btn ${editForm.assigneeSelection.type === 'user' ? 'active' : ''}`}
+                                >
+                                  <User size={16} />
+                                  個人
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditForm(prev => ({
+                                    ...prev,
+                                    assigneeSelection: { type: 'team' }
+                                  }))}
+                                  className={`assignee-type-btn ${editForm.assigneeSelection.type === 'team' ? 'active' : ''}`}
+                                >
+                                  <Users size={16} />
+                                  チーム
+                                </button>
+                              </div>
+                            </label>
+                          </div>
+
+                          {/* 優先度と期限 */}
+                          <div className="form-row-split">
+                            <label className="form-label">
+                              <span className="label-text">優先度</span>
+                              <div className="priority-buttons compact">
+                                {(['high', 'medium', 'low'] as const).map(priority => (
+                                  <button
+                                    key={priority}
+                                    type="button"
+                                    onClick={() => setEditForm(prev => ({ ...prev, priority }))}
+                                    className={`priority-btn priority-${priority} compact ${editForm.priority === priority ? 'active' : ''}`}
+                                  >
+                                    {getPriorityText(priority)}
+                                  </button>
+                                ))}
+                              </div>
+                            </label>
+                            <label className="form-label">
+                              <span className="label-text">期限</span>
+                              <input
+                                type="date"
+                                value={editForm.dueDate}
+                                onChange={(e) => setEditForm(prev => ({ ...prev, dueDate: e.target.value }))}
+                                className="form-input"
+                              />
+                            </label>
+                          </div>
+
+                          {/* アクションボタン */}
+                          <div className="form-actions">
                             <button
-                              onClick={cancelEdit}
-                              className="btn btn-secondary"
-                              type="button"
-                            >
-                              <XCircle size={16} />
-                              キャンセル
-                            </button>
-                            <button
-                              onClick={() => saveEdit(list.id, card.id)}
-                              className="btn btn-primary"
-                              type="button"
+                              onClick={() => saveEditCard(list.id, card.id)}
+                              className="save-button"
                               disabled={!editForm.title.trim()}
                             >
                               <Save size={16} />
                               保存
                             </button>
+                            <button
+                              onClick={cancelEdit}
+                              className="cancel-button"
+                            >
+                              <XCircle size={16} />
+                              キャンセル
+                            </button>
                           </div>
                         </div>
                       </div>
                     ) : (
-                      // 表示モード
+                      /* 表示モード */
                       <>
                         <div className="task-header">
                           <h3 className="task-title">{card.title}</h3>
-                          <div className="task-actions">
-                            <button
-                              onClick={() => startEdit(card)}
-                              className="icon-button"
-                              title="タスクを編集"
-                            >
-                              <Edit3 size={14} />
-                            </button>
-                            <button
-                              onClick={() => deleteCard(list.id, card.id)}
-                              className="icon-button danger"
-                              title="タスクを削除"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
+                          {/* タスク編集・削除権限チェック */}
+                          {(hasPermission('edit_task') && 
+                            (card.createdBy === currentUser?.id || hasPermission('manage_settings'))) && (
+                            <div className="task-actions">
+                              <button
+                                onClick={() => startEditCard(card)}
+                                className="icon-button"
+                                title="編集"
+                              >
+                                <Edit3 size={14} />
+                              </button>
+                              <button
+                                onClick={() => deleteCard(list.id, card.id)}
+                                className="icon-button danger"
+                                title="削除"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          )}
                         </div>
-                        
+
                         {card.description && (
                           <p className="task-description">{card.description}</p>
                         )}
 
                         <div className="task-meta">
-                          {/* 作成者情報 */}
                           <div className="task-creator">
-                            <UserCheck size={12} />
                             <span className="meta-label">作成者:</span>
-                            <span>{card.createdByName}</span>
+                            {card.createdByName}
+                          </div>
+                          
+                          <div className="task-assignee">
+                            <span className="meta-label">担当:</span>
+                            {card.assigneeName}
+                            {card.assigneeType === 'team' && (
+                              <span className="team-indicator">チーム</span>
+                            )}
                           </div>
 
-                          {/* 担当者情報 */}
-                          {card.assigneeName && (
-                            <div className="task-assignee">
-                              {card.assigneeType === 'team' ? <UsersIcon size={12} /> : <User size={12} />}
-                              <span className="meta-label">担当:</span>
-                              <span>{card.assigneeName}</span>
-                              {card.assigneeType === 'team' && <span className="team-indicator">(チーム)</span>}
-                            </div>
-                          )}
-                          
                           {card.dueDate && (
                             <div className="task-due-date">
                               <Calendar size={12} />
                               <span className="meta-label">期限:</span>
-                              <span>{formatDate(card.dueDate)}</span>
-                            </div>
-                          )}
-
-                          {card.priority && (
-                            <div className={`task-priority ${card.priority}`}>
-                              <AlertCircle size={12} />
-                              <span>優先度: {getPriorityLabel(card.priority)}</span>
-                            </div>
-                          )}
-                          
-                          {card.tags && card.tags.length > 0 && (
-                            <div className="task-tags">
-                              {card.tags.map((tag, tagIndex) => (
-                                <span key={tagIndex} className="tag">
-                                  {tag}
-                                </span>
-                              ))}
+                              {new Date(card.dueDate).toLocaleDateString('ja-JP')}
                             </div>
                           )}
                         </div>
+
+                        <div className="task-priority priority-${card.priority}">
+                          <AlertCircle size={12} />
+                          優先度: {getPriorityText(card.priority)}
+                        </div>
+
+                        {card.tags && card.tags.length > 0 && (
+                          <div className="task-tags">
+                            {card.tags.map(tag => (
+                              <span key={tag} className="tag">
+                                <Tag size={10} />
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
                 ))}
 
-                {/* 高機能タスク追加フォーム */}
-                {isAddingCard[list.id] && (
-                  <div className="enhanced-form-container">
-                    <div className="form-grid">
-                      {/* タイトル */}
-                      <div className="form-row">
-                        <label className="form-label">
-                          <span className="label-text">タスク名 <span className="required">*</span></span>
-                          <input
-                            type="text"
-                            placeholder="具体的なタスク名を入力..."
-                            value={newTaskForm.title}
-                            onChange={(e) => setNewTaskForm(prev => ({ ...prev, title: e.target.value }))}
-                            className="form-input"
-                            autoFocus
-                          />
-                        </label>
-                      </div>
+                {list.cards.length === 0 && (
+                  <div className="empty-state">
+                    タスクがありません<br />
+                    上の + ボタンで新しいタスクを追加できます
+                  </div>
+                )}
+              </div>
 
-                      {/* 説明 */}
-                      <div className="form-row">
-                        <label className="form-label">
-                          <span className="label-text">詳細説明</span>
-                          <textarea
-                            placeholder="タスクの詳細、目的、成果物などを記載..."
-                            value={newTaskForm.description}
-                            onChange={(e) => setNewTaskForm(prev => ({ ...prev, description: e.target.value }))}
-                            className="form-textarea enhanced"
-                            rows={3}
-                          />
-                        </label>
-                      </div>
+              {/* 新規タスク追加フォーム */}
+              {isAddingCard[list.id] && (
+                <div className="enhanced-form-container">
+                  <div className="form-grid">
+                    {/* タイトル */}
+                    <div className="form-row">
+                      <label className="form-label">
+                        <span className="label-text">タスク名 <span className="required">*</span></span>
+                        <input
+                          type="text"
+                          placeholder="具体的なタスク名を入力..."
+                          value={newTaskForm.title}
+                          onChange={(e) => setNewTaskForm(prev => ({ ...prev, title: e.target.value }))}
+                          className="form-input"
+                          autoFocus
+                        />
+                      </label>
+                    </div>
 
-                      {/* チーム選択 */}
-                      <div className="form-row">
-                        <label className="form-label">
-                          <span className="label-text">チーム選択</span>
-                          <select
-                            value={newTaskForm.selectedTeamId}
-                            onChange={(e) => {
-                              setNewTaskForm(prev => ({ 
-                                ...prev, 
-                                selectedTeamId: e.target.value,
-                                selectedUserIds: [],
-                                assigneeSelection: { type: 'user' }
-                              }));
-                            }}
-                            className="form-select"
-                          >
-                            <option value="">チームを選択</option>
-                            {teams.map(team => (
-                              <option key={team.id} value={team.id}>
-                                {team.icon} {team.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
+                    {/* 説明 */}
+                    <div className="form-row">
+                      <label className="form-label">
+                        <span className="label-text">詳細説明</span>
+                        <textarea
+                          placeholder="タスクの詳細、目的、成果物などを記載..."
+                          value={newTaskForm.description}
+                          onChange={(e) => setNewTaskForm(prev => ({ ...prev, description: e.target.value }))}
+                          className="form-textarea enhanced"
+                          rows={3}
+                        />
+                      </label>
+                    </div>
 
-                      {/* 担当者タイプ選択 */}
-                      {newTaskForm.selectedTeamId && (
-                        <>
-                          <div className="form-row">
+                    {/* チーム選択 */}
+                    <div className="form-row">
+                      <label className="form-label">
+                        <span className="label-text">チーム選択</span>
+                        <select
+                          value={newTaskForm.selectedTeamId}
+                          onChange={(e) => setNewTaskForm(prev => ({
+                            ...prev,
+                            selectedTeamId: e.target.value,
+                            assigneeSelection: {
+                              type: 'user',
+                              teamId: e.target.value
+                            }
+                          }))}
+                          className="form-select"
+                        >
+                          <option value="">チームを選択してください</option>
+                          {teams.map(team => (
+                            <option key={team.id} value={team.id}>
+                              {team.icon} {team.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    {/* 担当者タイプ選択 */}
+                    {newTaskForm.selectedTeamId && (
+                      <>
+                        <div className="form-row">
+                          <label className="form-label">
                             <span className="label-text">担当者タイプ</span>
                             <div className="assignee-type-buttons">
                               <button
@@ -1014,7 +1172,7 @@ const App: React.FC = () => {
                                 }))}
                                 className={`assignee-type-btn ${newTaskForm.assigneeSelection.type === 'team' ? 'active' : ''}`}
                               >
-                                <UsersIcon size={16} />
+                                <Users size={16} />
                                 チーム全体
                               </button>
                               <button
@@ -1022,9 +1180,9 @@ const App: React.FC = () => {
                                 onClick={() => setNewTaskForm(prev => ({
                                   ...prev,
                                   assigneeSelection: {
-                                    type: 'user'
-                                  },
-                                  selectedUserIds: []
+                                    type: 'user',
+                                    teamId: prev.selectedTeamId
+                                  }
                                 }))}
                                 className={`assignee-type-btn ${newTaskForm.assigneeSelection.type === 'user' ? 'active' : ''}`}
                               >
@@ -1032,175 +1190,225 @@ const App: React.FC = () => {
                                 個人
                               </button>
                             </div>
-                          </div>
-
-                          {/* 個人担当者選択 */}
-                          {newTaskForm.assigneeSelection.type === 'user' && (
-                            <div className="form-row">
-                              <label className="form-label">
-                                <span className="label-text">担当者</span>
-                                <select
-                                  value={newTaskForm.assigneeSelection.userId || ''}
-                                  onChange={(e) => setNewTaskForm(prev => ({
-                                    ...prev,
-                                    assigneeSelection: {
-                                      type: 'user',
-                                      userId: e.target.value,
-                                      teamId: prev.selectedTeamId
-                                    }
-                                  }))}
-                                  className="form-select"
-                                >
-                                  <option value="">担当者を選択</option>
-                                  {getTeamMembers(newTaskForm.selectedTeamId).map(member => (
-                                    <option key={member.id} value={member.id}>
-                                      {member.name} ({member.position})
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                            </div>
-                          )}
-                        </>
-                      )}
-
-                      {/* 期限と優先度 */}
-                      <div className="form-row-split">
-                        <label className="form-label">
-                          <span className="label-text">期限</span>
-                          <input
-                            type="date"
-                            value={newTaskForm.dueDate}
-                            onChange={(e) => setNewTaskForm(prev => ({ ...prev, dueDate: e.target.value }))}
-                            className="form-input"
-                            min={new Date().toISOString().split('T')[0]}
-                          />
-                        </label>
-
-                        <div className="form-label">
-                          <span className="label-text">優先度</span>
-                          <div className="priority-buttons">
-                            {[
-                              { value: 'low', label: '低', color: '#10b981' },
-                              { value: 'medium', label: '中', color: '#f59e0b' },
-                              { value: 'high', label: '高', color: '#ef4444' }
-                            ].map(priority => (
-                              <button
-                                key={priority.value}
-                                type="button"
-                                onClick={() => setNewTaskForm(prev => ({ ...prev, priority: priority.value as any }))}
-                                className={`priority-btn compact ${newTaskForm.priority === priority.value ? 'active' : ''}`}
-                                style={{ 
-                                  backgroundColor: newTaskForm.priority === priority.value ? priority.color : 'transparent',
-                                  borderColor: priority.color,
-                                  color: newTaskForm.priority === priority.value ? 'white' : priority.color
-                                }}
-                              >
-                                {priority.label}
-                              </button>
-                            ))}
-                          </div>
+                          </label>
                         </div>
-                      </div>
 
-                      {/* タグ選択 */}
-                      <div className="form-row">
-                        <span className="label-text">タグ</span>
-                        <div className="tags-container compact">
-                          {commonTags.slice(0, 8).map(tag => (
-                            <button
-                              key={tag}
-                              type="button"
-                              onClick={() => {
-                                setNewTaskForm(prev => ({
+                        {/* 個人担当者選択 */}
+                        {newTaskForm.assigneeSelection.type === 'user' && (
+                          <div className="form-row">
+                            <label className="form-label">
+                              <span className="label-text">担当者</span>
+                              <select
+                                value={newTaskForm.assigneeSelection.userId || ''}
+                                onChange={(e) => setNewTaskForm(prev => ({
                                   ...prev,
-                                  tags: prev.tags.includes(tag)
-                                    ? prev.tags.filter(t => t !== tag)
-                                    : [...prev.tags, tag]
-                                }));
-                              }}
-                              className={`tag-btn ${newTaskForm.tags.includes(tag) ? 'selected' : ''}`}
+                                  assigneeSelection: {
+                                    type: 'user',
+                                    userId: e.target.value,
+                                    teamId: prev.selectedTeamId
+                                  }
+                                }))}
+                                className="form-select"
+                              >
+                                <option value="">担当者を選択</option>
+                                {getTeamMembers(newTaskForm.selectedTeamId).map(member => (
+                                  <option key={member.id} value={member.id}>
+                                    {member.name} ({member.position})
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* 期限と優先度 */}
+                    <div className="form-row-split">
+                      <label className="form-label">
+                        <span className="label-text">期限</span>
+                        <input
+                          type="date"
+                          value={newTaskForm.dueDate}
+                          onChange={(e) => setNewTaskForm(prev => ({ ...prev, dueDate: e.target.value }))}
+                          className="form-input"
+                        />
+                      </label>
+                      <label className="form-label">
+                        <span className="label-text">優先度</span>
+                        <div className="priority-buttons compact">
+                          {(['high', 'medium', 'low'] as const).map(priority => (
+                            <button
+                              key={priority}
+                              type="button"
+                              onClick={() => setNewTaskForm(prev => ({ ...prev, priority }))}
+                              className={`priority-btn priority-${priority} compact ${newTaskForm.priority === priority ? 'active' : ''}`}
                             >
-                              {tag}
+                              {getPriorityText(priority)}
                             </button>
                           ))}
                         </div>
-                      </div>
+                      </label>
+                    </div>
 
-                      {/* アクションボタン */}
-                      <div className="form-actions enhanced">
-                        <button
-                          onClick={() => cancelAddCard(list.id)}
-                          className="btn btn-secondary"
-                          type="button"
-                        >
-                          <XCircle size={16} />
-                          キャンセル
-                        </button>
-                        <button
-                          onClick={() => addEnhancedCard(list.id)}
-                          className="btn btn-primary"
-                          type="button"
-                          disabled={!newTaskForm.title.trim()}
-                        >
-                          <Plus size={16} />
-                          タスクを作成
-                        </button>
-                      </div>
+                    {/* タグ追加 */}
+                    <div className="form-row">
+                      <label className="form-label">
+                        <span className="label-text">タグ</span>
+                        <div className="tags-input-container">
+                          {/* 既存タグの表示 */}
+                          {newTaskForm.tags.length > 0 && (
+                            <div className="selected-tags">
+                              {newTaskForm.tags.map(tag => (
+                                <span key={tag} className="selected-tag">
+                                  {tag}
+                                  <button
+                                    type="button"
+                                    onClick={() => removeTag(tag)}
+                                    className="remove-tag-btn"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          
+                          {/* よく使うタグ */}
+                          <div className="common-tags">
+                            <span className="common-tags-label">よく使うタグ:</span>
+                            <div className="common-tags-list">
+                              {commonTags.filter(tag => !newTaskForm.tags.includes(tag)).slice(0, 8).map(tag => (
+                                <button
+                                  key={tag}
+                                  type="button"
+                                  onClick={() => addTag(tag)}
+                                  className="common-tag-btn"
+                                >
+                                  {tag}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+
+                    {/* アクションボタン */}
+                    <div className="form-actions">
+                      <button
+                        onClick={() => addEnhancedCard(list.id)}
+                        className="save-button"
+                        disabled={!newTaskForm.title.trim()}
+                      >
+                        <Save size={16} />
+                        タスクを追加
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsAddingCard(prev => ({ ...prev, [list.id]: false }));
+                          setNewTaskForm({
+                            title: '',
+                            description: '',
+                            assigneeSelection: { type: 'user' },
+                            dueDate: '',
+                            tags: [],
+                            priority: 'medium',
+                            selectedTeamId: currentUser?.primaryTeamId || '',
+                            selectedUserIds: []
+                          });
+                        }}
+                        className="cancel-button"
+                      >
+                        <XCircle size={16} />
+                        キャンセル
+                      </button>
                     </div>
                   </div>
-                )}
-
-                {/* 空の状態 */}
-                {list.cards.length === 0 && !isAddingCard[list.id] && (
-                  <div className="empty-state">
-                    タスクがありません
-                    <br />
-                    ＋ボタンでタスクを追加しましょう
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
       </main>
 
       {/* データ管理モーダル */}
-      <DataManagement
-        isOpen={isDataManagementOpen}
-        onClose={() => setIsDataManagementOpen(false)}
-        onDataImported={handleDataImported}
-      />
+      {isDataManagementOpen && (
+        <DataManagement
+          isOpen={isDataManagementOpen}
+          onClose={() => setIsDataManagementOpen(false)}
+          onDataImported={() => {
+            // データインポート後の処理
+            window.location.reload();
+          }}
+        />
+      )}
 
-      {/* ユーザー設定モーダル */}
+      {/* アカウント設定モーダル */}
       {isUserSettingsOpen && (
         <div className="modal-overlay" onClick={() => setIsUserSettingsOpen(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>ユーザー切り替え</h2>
+              <h2>アカウント設定</h2>
               <button onClick={() => setIsUserSettingsOpen(false)} className="modal-close">
                 <X size={24} />
               </button>
             </div>
             <div className="modal-body">
-              <p className="modal-description">現在のユーザー: <strong>{currentUser?.name}</strong></p>
-              <div className="user-list">
-                {users.map(user => (
-                  <button
-                    key={user.id}
-                    onClick={() => {
-                      switchUser(user.id);
-                      setIsUserSettingsOpen(false);
-                    }}
-                    className={`user-item ${user.id === currentUser?.id ? 'active' : ''}`}
-                  >
-                    <User size={20} />
-                    <div className="user-info-detail">
-                      <div className="user-name">{user.name}</div>
-                      <div className="user-meta">{user.position} • {user.department}</div>
+              {/* 現在のユーザー情報 */}
+              <div className="current-user-info">
+                <h3>現在のユーザー</h3>
+                <div className="user-detail-card">
+                  <User size={24} />
+                  <div className="user-detail-info">
+                    <div className="user-name">{currentUser.name}</div>
+                    <div className="user-meta">{currentUser.position} • {currentUser.department}</div>
+                    <div className="user-role-badge role-{currentUser.role}">{currentUser.role}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 権限情報 */}
+              <div className="permissions-info">
+                <h4>利用可能な機能</h4>
+                <div className="permissions-list">
+                  <div className="permission-item">
+                    <span>タスク管理:</span>
+                    <span className="permission-status granted">許可</span>
+                  </div>
+                  {hasPermission('manage_teams') && (
+                    <div className="permission-item">
+                      <span>チーム管理:</span>
+                      <span className="permission-status granted">許可</span>
                     </div>
-                  </button>
-                ))}
+                  )}
+                  {hasPermission('create_user') && (
+                    <div className="permission-item">
+                      <span>ユーザー管理:</span>
+                      <span className="permission-status granted">許可</span>
+                    </div>
+                  )}
+                  {hasPermission('export_data') && (
+                    <div className="permission-item">
+                      <span>データ管理:</span>
+                      <span className="permission-status granted">許可</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* アクション */}
+              <div className="auth-actions">
+                <button
+                  onClick={() => {
+                    logout();
+                    setIsUserSettingsOpen(false);
+                  }}
+                  className="logout-button"
+                >
+                  <X size={16} />
+                  ログアウト
+                </button>
               </div>
             </div>
           </div>
@@ -1249,7 +1457,10 @@ const App: React.FC = () => {
       <footer className="footer">
         <div className="footer-container">
           <strong>タスク管理くん</strong> - 社内タスク管理システム | 
-          データ永続化対応版 v3.1 | 
+          セキュア認証版 v3.3 | 
+          {currentUser && (
+            <>ログイン中: {currentUser.name} ({currentUser.role}) | </>
+          )}
           作成日: {new Date().toLocaleDateString('ja-JP')}
         </div>
       </footer>

@@ -1,16 +1,53 @@
 /**
- * タスク管理くん - TypeScript型定義 ユーザー・チーム管理対応版
+ * タスク管理くん - TypeScript型定義 ユーザー・チーム管理対応版（修正版）
+ * 
+ * 修正内容:
+ * - defaultAssigneeType に 'both' を追加
+ * - Task型のupdatedAtプロパティをオプションに変更（初期データ対応）
  */
+
+// ============================================
+// 認証関連の型定義
+// ============================================
+
+// 認証状態
+export interface AuthState {
+  isAuthenticated: boolean;
+  user: User;
+  sessionToken?: string; // セッショントークンを追加
+  loginTime: Date;
+  lastActivity: Date;
+  sessionId?: string;
+}
+
+// ログインフォーム用の簡易ユーザー情報
+export interface LoginForm {
+  id: string;
+  name: string;
+  email: string;
+  department?: string;
+  position?: string;
+  role: 'admin' | 'manager' | 'member' | 'viewer';
+  avatar?: string;
+}
+
+// 認証エラー
+export interface AuthError {
+  code: 'INVALID_CREDENTIALS' | 'SESSION_EXPIRED' | 'USER_NOT_FOUND' | 'PERMISSION_DENIED';
+  message: string;
+  timestamp: Date;
+}
 
 // ============================================
 // ユーザー・チーム管理の型定義
 // ============================================
 
-// ユーザー情報
+// ユーザー情報（セキュリティ対応版）
 export interface User {
   id: string;
   name: string;
   email: string;
+  hashedPassword?: string; // パスワードハッシュ（セキュリティ対応）
   avatar?: string;
   role: 'admin' | 'manager' | 'member' | 'viewer';
   department?: string;
@@ -25,12 +62,12 @@ export interface User {
   preferences: UserPreferences;
 }
 
-// ユーザー設定
+// ユーザー設定（修正版）
 export interface UserPreferences {
   theme: 'light' | 'dark' | 'auto';
   language: 'ja' | 'en';
   notifications: NotificationSettings;
-  defaultAssigneeType: 'user' | 'team';
+  defaultAssigneeType: 'user' | 'team' | 'both'; // 'both' を追加
   workingHours: {
     start: string; // "09:00"
     end: string;   // "18:00"
@@ -54,7 +91,7 @@ export interface Team {
 
 // 現在のユーザーセッション
 export interface UserSession {
-  currentUser: User;
+  currentUser: User | null; // null許可に変更
   availableTeams: Team[];
   availableUsers: User[];
   isAuthenticated: boolean;
@@ -62,10 +99,10 @@ export interface UserSession {
 }
 
 // ============================================
-// タスク関連の型定義（拡張版）
+// タスク関連の型定義（拡張版・修正版）
 // ============================================
 
-// タスクカードの型定義
+// タスクカードの型定義（修正版）
 export interface Task {
   id: string;
   title: string;
@@ -86,9 +123,9 @@ export interface Task {
   priority: 'low' | 'medium' | 'high';
   status: 'todo' | 'in-progress' | 'done' | 'blocked';
   
-  // メタデータ
+  // メタデータ（updatedAtをオプションに変更）
   createdAt: Date;
-  updatedAt: Date;
+  updatedAt?: Date; // オプションに変更
   estimatedHours?: number;
   actualHours?: number;
   attachments?: Attachment[];
