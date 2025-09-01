@@ -1,110 +1,110 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, X, Edit3, User, Calendar, Tag, Info } from 'lucide-react';
+import { Plus, X, Edit3, User, Calendar, Tag, Info, Save, XCircle } from 'lucide-react';
 import './styles/globals.css';
 
-// 型定義（後でsrc/typesから import する）
-interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  assignee?: string;
-  dueDate?: string;
-  tags: string[];
-}
+// 型定義をインポート
+import type { Task, TaskList, DraggedCard } from './types';
 
-interface List {
-  id: string;
-  title: string;
-  color: string;
-  cards: Task[];
-}
-
+/**
+ * タスク管理くん - メインアプリケーションコンポーネント
+ */
 const App: React.FC = () => {
-  const [lists, setLists] = useState<List[]>([
+  // ============================================
+  // 状態管理
+  // ============================================
+  
+  // タスクリストの初期データ
+  const [lists, setLists] = useState<TaskList[]>([
     {
       id: '1',
       title: 'To Do',
-      color: 'bg-red-100 border-red-300',
+      color: 'list-todo',
       cards: [
         {
           id: '1',
           title: 'プロジェクト企画書の作成',
-          description: '新規プロジェクトの企画書を作成する',
+          description: '新規プロジェクトの企画書を作成し、ステークホルダーに共有する',
           assignee: '田中さん',
           dueDate: '2024-09-15',
-          tags: ['企画', '高優先度']
+          tags: ['企画', '高優先度', 'ドキュメント']
         },
         {
           id: '2',
           title: 'データベース設計',
-          description: 'タスク管理システムのDB設計',
+          description: 'タスク管理システムのデータベース構造を設計し、ER図を作成する',
           assignee: '佐藤さん',
           dueDate: '2024-09-20',
-          tags: ['開発', 'DB']
+          tags: ['開発', 'DB', '設計']
         }
       ]
     },
     {
       id: '2',
       title: 'In Progress',
-      color: 'bg-yellow-100 border-yellow-300',
+      color: 'list-progress',
       cards: [
         {
           id: '3',
           title: 'API仕様書の作成',
-          description: 'RESTful APIの仕様書を作成中',
+          description: 'RESTful APIの詳細仕様書を作成中。認証、CRUD操作、エラーハンドリングを含む',
           assignee: '鈴木さん',
           dueDate: '2024-09-18',
-          tags: ['開発', 'API']
+          tags: ['開発', 'API', 'ドキュメント']
         }
       ]
     },
     {
       id: '3',
       title: 'Done',
-      color: 'bg-green-100 border-green-300',
+      color: 'list-done',
       cards: [
         {
           id: '4',
           title: 'アプリ名の決定',
-          description: 'タスク管理くんに決定！',
+          description: '「タスク管理くん」に正式決定！チーム全員の合意を得られました。',
           assignee: 'プロジェクトチーム',
           dueDate: '2024-09-01',
-          tags: ['企画']
+          tags: ['企画', '完了']
         }
       ]
     }
   ]);
 
-  const [draggedCard, setDraggedCard] = useState<(Task & { sourceListId: string }) | null>(null);
+  // ドラッグ&ドロップ関連の状態
+  const [draggedCard, setDraggedCard] = useState<DraggedCard | null>(null);
   const [draggedOver, setDraggedOver] = useState<string | null>(null);
+  const dragCounter = useRef<number>(0);
+
+  // フォーム関連の状態
   const [isAddingCard, setIsAddingCard] = useState<Record<string, boolean>>({});
   const [newCardTitle, setNewCardTitle] = useState<string>('');
   const [newCardDescription, setNewCardDescription] = useState<string>('');
   const [editingCard, setEditingCard] = useState<string | null>(null);
+  const [editedTitle, setEditedTitle] = useState<string>('');
+  const [editedDescription, setEditedDescription] = useState<string>('');
 
-  const dragCounter = useRef<number>(0);
+  // ============================================
+  // ドラッグ&ドロップ機能
+  // ============================================
 
-  // ドラッグ開始
   const handleDragStart = (e: React.DragEvent, card: Task, sourceListId: string) => {
-    setDraggedCard({ ...card, sourceListId });
+    const dragData: DraggedCard = { ...card, sourceListId };
+    setDraggedCard(dragData);
     e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', ''); // Firefox対応
   };
 
-  // ドラッグオーバー
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };
 
-  // ドラッグ進入
   const handleDragEnter = (e: React.DragEvent, listId: string) => {
     e.preventDefault();
     dragCounter.current++;
     setDraggedOver(listId);
   };
 
-  // ドラッグ離脱
   const handleDragLeave = () => {
     dragCounter.current--;
     if (dragCounter.current === 0) {
@@ -112,17 +112,19 @@ const App: React.FC = () => {
     }
   };
 
-  // ドロップ
   const handleDrop = (e: React.DragEvent, targetListId: string) => {
     e.preventDefault();
     dragCounter.current = 0;
     setDraggedOver(null);
 
-    if (!draggedCard) return;
-    if (draggedCard.sourceListId === targetListId) return;
+    if (!draggedCard || draggedCard.sourceListId === targetListId) {
+      setDraggedCard(null);
+      return;
+    }
 
+    // タスクを移動
     setLists(prevLists => {
-      const newLists = prevLists.map(list => {
+      return prevLists.map(list => {
         // 元のリストからカードを削除
         if (list.id === draggedCard.sourceListId) {
           return {
@@ -132,38 +134,34 @@ const App: React.FC = () => {
         }
         // 新しいリストにカードを追加
         if (list.id === targetListId) {
-          const cardToMove: Task = {
-            id: draggedCard.id,
-            title: draggedCard.title,
-            description: draggedCard.description,
-            assignee: draggedCard.assignee,
-            dueDate: draggedCard.dueDate,
-            tags: draggedCard.tags
-          };
+          const { sourceListId, ...cardWithoutSource } = draggedCard;
           return {
             ...list,
-            cards: [...list.cards, cardToMove]
+            cards: [...list.cards, cardWithoutSource]
           };
         }
         return list;
       });
-      return newLists;
     });
 
     setDraggedCard(null);
   };
 
-  // カード追加
+  // ============================================
+  // タスク管理機能
+  // ============================================
+
   const addCard = (listId: string) => {
     if (!newCardTitle.trim()) return;
 
     const newCard: Task = {
-      id: Date.now().toString(),
-      title: newCardTitle,
-      description: newCardDescription,
+      id: `task_${Date.now()}`,
+      title: newCardTitle.trim(),
+      description: newCardDescription.trim(),
       assignee: '',
       dueDate: '',
-      tags: []
+      tags: [],
+      createdAt: new Date()
     };
 
     setLists(prevLists => 
@@ -174,13 +172,15 @@ const App: React.FC = () => {
       )
     );
 
+    // フォームをリセット
     setNewCardTitle('');
     setNewCardDescription('');
     setIsAddingCard(prev => ({ ...prev, [listId]: false }));
   };
 
-  // カード削除
   const deleteCard = (listId: string, cardId: string) => {
+    if (!window.confirm('このタスクを削除しますか？')) return;
+
     setLists(prevLists => 
       prevLists.map(list => 
         list.id === listId 
@@ -190,55 +190,116 @@ const App: React.FC = () => {
     );
   };
 
-  // カード更新
-  const updateCard = (listId: string, cardId: string, updatedCard: Partial<Task>) => {
+  const startEdit = (card: Task) => {
+    setEditingCard(card.id);
+    setEditedTitle(card.title);
+    setEditedDescription(card.description || '');
+  };
+
+  const saveEdit = (listId: string, cardId: string) => {
+    if (!editedTitle.trim()) return;
+
     setLists(prevLists => 
       prevLists.map(list => 
         list.id === listId 
           ? { 
               ...list, 
               cards: list.cards.map(card => 
-                card.id === cardId ? { ...card, ...updatedCard } : card
+                card.id === cardId 
+                  ? { 
+                      ...card, 
+                      title: editedTitle.trim(),
+                      description: editedDescription.trim(),
+                      updatedAt: new Date()
+                    } 
+                  : card
               )
             }
           : list
       )
     );
-    setEditingCard(null);
+
+    cancelEdit();
   };
 
+  const cancelEdit = () => {
+    setEditingCard(null);
+    setEditedTitle('');
+    setEditedDescription('');
+  };
+
+  const cancelAddCard = (listId: string) => {
+    setIsAddingCard(prev => ({ ...prev, [listId]: false }));
+    setNewCardTitle('');
+    setNewCardDescription('');
+  };
+
+  // ============================================
+  // キーボードショートカット
+  // ============================================
+  
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // ESCキーで編集をキャンセル
+      if (e.key === 'Escape') {
+        if (editingCard) {
+          cancelEdit();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editingCard]);
+
+  // ============================================
+  // ユーティリティ関数
+  // ============================================
+
+  const getTotalTasks = () => {
+    return lists.reduce((total, list) => total + list.cards.length, 0);
+  };
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ja-JP');
+  };
+
+  // ============================================
+  // レンダリング
+  // ============================================
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div>
       {/* ヘッダー */}
-      <header className="bg-white shadow-md border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <div className="bg-blue-600 text-white p-2 rounded-lg">
-                <Tag className="w-6 h-6" />
-              </div>
-              <h1 className="text-2xl font-bold text-gray-900">タスク管理くん</h1>
-              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">v1.0</span>
-              <div className="flex items-center space-x-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
-                <Info className="w-3 h-3" />
-                <span>ネイティブD&D実装</span>
-              </div>
+      <header className="header">
+        <div className="header-container">
+          <div className="header-left">
+            <div className="app-icon">
+              <Tag size={28} />
             </div>
-            <div className="text-sm text-gray-600">
-              社内タスク管理システム
+            <h1 className="app-title">タスク管理くん</h1>
+            <span className="version-badge">v1.0</span>
+            <div className="status-badge">
+              <Info size={12} />
+              <span>ネイティブD&D実装</span>
             </div>
+          </div>
+          <div className="header-subtitle">
+            社内タスク管理システム | 総タスク数: {getTotalTasks()}
           </div>
         </div>
       </header>
 
       {/* メインコンテンツ */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex space-x-6 overflow-x-auto pb-6 scrollbar-thin">
+      <main className="main-container">
+        <div className="kanban-board">
           {lists.map(list => (
             <div
               key={list.id}
-              className={`flex-shrink-0 w-80 ${list.color} rounded-lg border-2 transition-all duration-200 ${
-                draggedOver === list.id ? 'border-blue-500 shadow-lg scale-105' : ''
+              className={`list-container ${list.color} ${
+                draggedOver === list.id ? 'drag-over' : ''
               }`}
               onDragOver={handleDragOver}
               onDragEnter={(e) => handleDragEnter(e, list.id)}
@@ -246,109 +307,123 @@ const App: React.FC = () => {
               onDrop={(e) => handleDrop(e, list.id)}
             >
               {/* リストヘッダー */}
-              <div className="p-4 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-gray-800">{list.title}</h2>
-                  <div className="flex items-center space-x-2">
-                    <span className="bg-gray-500 text-white text-xs px-2 py-1 rounded-full">
-                      {list.cards.length}
-                    </span>
-                    <button
-                      onClick={() => setIsAddingCard(prev => ({ ...prev, [list.id]: true }))}
-                      className="p-1 hover:bg-gray-200 rounded transition-colors"
-                      title="新しいタスクを追加"
-                    >
-                      <Plus className="w-4 h-4 text-gray-600" />
-                    </button>
-                  </div>
+              <div className="list-header">
+                <h2 className="list-title">{list.title}</h2>
+                <div className="list-actions">
+                  <span className="task-count">{list.cards.length}</span>
+                  <button
+                    onClick={() => setIsAddingCard(prev => ({ ...prev, [list.id]: true }))}
+                    className="add-button"
+                    title={`${list.title}に新しいタスクを追加`}
+                    disabled={isAddingCard[list.id]}
+                  >
+                    <Plus size={18} />
+                  </button>
                 </div>
               </div>
 
-              {/* カード一覧 */}
-              <div className="p-4 space-y-3 min-h-32">
-                {list.cards.map(card => (
+              {/* タスクリスト */}
+              <div className="tasks-container">
+                {list.cards.map((card, index) => (
                   <div
                     key={card.id}
-                    draggable
+                    draggable={editingCard !== card.id}
                     onDragStart={(e) => handleDragStart(e, card, list.id)}
-                    className={`card card-hover cursor-move ${
+                    className={`task-card ${
                       draggedCard && draggedCard.id === card.id ? 'dragging' : ''
-                    }`}
+                    } ${editingCard === card.id ? 'editing' : ''}`}
                   >
                     {editingCard === card.id ? (
                       // 編集モード
-                      <div className="space-y-2">
+                      <div className="form-group">
                         <input
                           type="text"
-                          value={card.title}
-                          onChange={(e) => updateCard(list.id, card.id, { title: e.target.value })}
-                          className="form-input text-sm"
+                          value={editedTitle}
+                          onChange={(e) => setEditedTitle(e.target.value)}
+                          className="form-input"
                           placeholder="タスク名"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              saveEdit(list.id, card.id);
+                            } else if (e.key === 'Escape') {
+                              cancelEdit();
+                            }
+                          }}
                         />
                         <textarea
-                          value={card.description || ''}
-                          onChange={(e) => updateCard(list.id, card.id, { description: e.target.value })}
-                          className="form-textarea text-sm h-20"
+                          value={editedDescription}
+                          onChange={(e) => setEditedDescription(e.target.value)}
+                          className="form-textarea"
                           placeholder="詳細説明"
                         />
-                        <div className="flex justify-end space-x-2">
+                        <div className="form-actions">
                           <button
-                            onClick={() => setEditingCard(null)}
-                            className="btn-secondary py-1 px-3 text-sm"
+                            onClick={cancelEdit}
+                            className="btn btn-secondary"
+                            type="button"
                           >
-                            完了
+                            <XCircle size={16} />
+                            キャンセル
+                          </button>
+                          <button
+                            onClick={() => saveEdit(list.id, card.id)}
+                            className="btn btn-primary"
+                            type="button"
+                            disabled={!editedTitle.trim()}
+                          >
+                            <Save size={16} />
+                            保存
                           </button>
                         </div>
                       </div>
                     ) : (
                       // 表示モード
                       <>
-                        <div className="flex items-start justify-between mb-2">
-                          <h3 className="font-medium text-gray-900 text-sm leading-tight flex-1 pr-2">{card.title}</h3>
-                          <div className="flex space-x-1">
+                        <div className="task-header">
+                          <h3 className="task-title">{card.title}</h3>
+                          <div className="task-actions">
                             <button
-                              onClick={() => setEditingCard(card.id)}
-                              className="p-1 hover:bg-gray-100 rounded transition-colors"
-                              title="編集"
+                              onClick={() => startEdit(card)}
+                              className="icon-button"
+                              title="タスクを編集"
                             >
-                              <Edit3 className="w-3 h-3 text-gray-500" />
+                              <Edit3 size={14} />
                             </button>
                             <button
                               onClick={() => deleteCard(list.id, card.id)}
-                              className="p-1 hover:bg-red-100 rounded transition-colors"
-                              title="削除"
+                              className="icon-button danger"
+                              title="タスクを削除"
                             >
-                              <X className="w-3 h-3 text-red-500" />
+                              <X size={14} />
                             </button>
                           </div>
                         </div>
                         
                         {card.description && (
-                          <p className="text-gray-600 text-sm mb-3 line-clamp-2">{card.description}</p>
+                          <p className="task-description">{card.description}</p>
                         )}
 
-                        <div className="space-y-2">
+                        <div className="task-meta">
                           {card.assignee && (
-                            <div className="flex items-center space-x-1 text-xs text-gray-600">
-                              <User className="w-3 h-3" />
+                            <div className="task-assignee">
+                              <User size={14} />
                               <span>{card.assignee}</span>
                             </div>
                           )}
                           
                           {card.dueDate && (
-                            <div className="flex items-center space-x-1 text-xs text-gray-600">
-                              <Calendar className="w-3 h-3" />
-                              <span>{card.dueDate}</span>
+                            <div className="task-due-date">
+                              <Calendar size={14} />
+                              <span>{formatDate(card.dueDate)}</span>
                             </div>
                           )}
                           
                           {card.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                              {card.tags.map((tag, index) => (
-                                <span
-                                  key={index}
-                                  className="tag tag-blue"
-                                >
+                            <div className="task-tags">
+                              {card.tags.map((tag, tagIndex) => (
+                                <span key={tagIndex} className="tag">
                                   {tag}
                                 </span>
                               ))}
@@ -360,21 +435,23 @@ const App: React.FC = () => {
                   </div>
                 ))}
 
-                {/* カード追加フォーム */}
+                {/* タスク追加フォーム */}
                 {isAddingCard[list.id] && (
-                  <div className="card fade-in">
-                    <div className="space-y-2">
+                  <div className="form-container">
+                    <div className="form-group">
                       <input
                         type="text"
                         placeholder="タスク名を入力..."
                         value={newCardTitle}
                         onChange={(e) => setNewCardTitle(e.target.value)}
-                        className="form-input text-sm"
+                        className="form-input"
                         autoFocus
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
                             addCard(list.id);
+                          } else if (e.key === 'Escape') {
+                            cancelAddCard(list.id);
                           }
                         }}
                       />
@@ -382,28 +459,43 @@ const App: React.FC = () => {
                         placeholder="詳細説明（オプション）"
                         value={newCardDescription}
                         onChange={(e) => setNewCardDescription(e.target.value)}
-                        className="form-textarea text-sm h-20"
+                        className="form-textarea"
                       />
-                      <div className="flex justify-end space-x-2">
+                      <div className="form-actions">
                         <button
-                          onClick={() => {
-                            setIsAddingCard(prev => ({ ...prev, [list.id]: false }));
-                            setNewCardTitle('');
-                            setNewCardDescription('');
-                          }}
-                          className="btn-secondary py-1 px-3 text-sm"
+                          onClick={() => cancelAddCard(list.id)}
+                          className="btn btn-secondary"
+                          type="button"
                         >
+                          <XCircle size={16} />
                           キャンセル
                         </button>
                         <button
                           onClick={() => addCard(list.id)}
-                          className="btn-primary py-1 px-3 text-sm"
+                          className="btn btn-primary"
+                          type="button"
                           disabled={!newCardTitle.trim()}
                         >
+                          <Plus size={16} />
                           追加
                         </button>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* 空の状態 */}
+                {list.cards.length === 0 && !isAddingCard[list.id] && (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '2rem 1rem',
+                    color: '#9ca3af',
+                    fontSize: '0.875rem',
+                    fontStyle: 'italic'
+                  }}>
+                    タスクがありません
+                    <br />
+                    ＋ボタンでタスクを追加しましょう
                   </div>
                 )}
               </div>
@@ -413,11 +505,11 @@ const App: React.FC = () => {
       </main>
 
       {/* フッター */}
-      <footer className="bg-white border-t mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="text-center text-sm text-gray-500">
-            タスク管理くん - 社内タスク管理システム | プロトタイプ版
-          </div>
+      <footer className="footer">
+        <div className="footer-container">
+          <strong>タスク管理くん</strong> - 社内タスク管理システム | 
+          プロトタイプ版 v1.0 | 
+          作成日: {new Date().toLocaleDateString('ja-JP')}
         </div>
       </footer>
     </div>
