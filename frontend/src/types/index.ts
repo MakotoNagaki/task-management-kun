@@ -1,53 +1,16 @@
 /**
- * タスク管理くん - TypeScript型定義 ユーザー・チーム管理対応版（修正版）
- * 
- * 修正内容:
- * - defaultAssigneeType に 'both' を追加
- * - Task型のupdatedAtプロパティをオプションに変更（初期データ対応）
+ * タスク管理くん - TypeScript型定義 ユーザー・チーム管理対応版
  */
-
-// ============================================
-// 認証関連の型定義
-// ============================================
-
-// 認証状態
-export interface AuthState {
-  isAuthenticated: boolean;
-  user: User;
-  sessionToken?: string; // セッショントークンを追加
-  loginTime: Date;
-  lastActivity: Date;
-  sessionId?: string;
-}
-
-// ログインフォーム用の簡易ユーザー情報
-export interface LoginForm {
-  id: string;
-  name: string;
-  email: string;
-  department?: string;
-  position?: string;
-  role: 'admin' | 'manager' | 'member' | 'viewer';
-  avatar?: string;
-}
-
-// 認証エラー
-export interface AuthError {
-  code: 'INVALID_CREDENTIALS' | 'SESSION_EXPIRED' | 'USER_NOT_FOUND' | 'PERMISSION_DENIED';
-  message: string;
-  timestamp: Date;
-}
 
 // ============================================
 // ユーザー・チーム管理の型定義
 // ============================================
 
-// ユーザー情報（セキュリティ対応版）
+// ユーザー情報
 export interface User {
   id: string;
   name: string;
   email: string;
-  hashedPassword?: string; // パスワードハッシュ（セキュリティ対応）
   avatar?: string;
   role: 'admin' | 'manager' | 'member' | 'viewer';
   department?: string;
@@ -62,12 +25,12 @@ export interface User {
   preferences: UserPreferences;
 }
 
-// ユーザー設定（修正版）
+// ユーザー設定
 export interface UserPreferences {
   theme: 'light' | 'dark' | 'auto';
   language: 'ja' | 'en';
   notifications: NotificationSettings;
-  defaultAssigneeType: 'user' | 'team' | 'both'; // 'both' を追加
+  defaultAssigneeType: 'user' | 'team';
   workingHours: {
     start: string; // "09:00"
     end: string;   // "18:00"
@@ -91,7 +54,7 @@ export interface Team {
 
 // 現在のユーザーセッション
 export interface UserSession {
-  currentUser: User | null; // null許可に変更
+  currentUser: User;
   availableTeams: Team[];
   availableUsers: User[];
   isAuthenticated: boolean;
@@ -99,10 +62,10 @@ export interface UserSession {
 }
 
 // ============================================
-// タスク関連の型定義（拡張版・修正版）
+// タスク関連の型定義（拡張版）
 // ============================================
 
-// タスクカードの型定義（修正版）
+// タスクカードの型定義
 export interface Task {
   id: string;
   title: string;
@@ -123,9 +86,9 @@ export interface Task {
   priority: 'low' | 'medium' | 'high';
   status: 'todo' | 'in-progress' | 'done' | 'blocked';
   
-  // メタデータ（updatedAtをオプションに変更）
+  // メタデータ
   createdAt: Date;
-  updatedAt?: Date; // オプションに変更
+  updatedAt: Date;
   estimatedHours?: number;
   actualHours?: number;
   attachments?: Attachment[];
@@ -202,6 +165,45 @@ export interface CreateUserForm {
   teamIds: string[];
   primaryTeamId?: string;
   password: string;
+}
+
+// ============================================
+// ログイン・認証関連のフォーム型定義
+// ============================================
+
+// ログインフォーム（開発用簡易ログイン）
+export interface LoginForm {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'manager' | 'member' | 'viewer';
+  avatar?: string;
+  isSelected?: boolean;
+}
+
+// 認証APIリクエスト
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+// 認証APIレスポンス
+export interface LoginResponse {
+  user: User;
+  token: string;
+  expiresAt: Date;
+}
+
+// パスワードリセットフォーム
+export interface PasswordResetForm {
+  email: string;
+}
+
+// パスワード変更フォーム
+export interface PasswordChangeForm {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
 }
 
 // ============================================
@@ -325,18 +327,6 @@ export interface ApiMeta {
   totalPages?: number;
   timestamp: Date;
   requestId?: string;
-}
-
-// 認証API
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-export interface LoginResponse {
-  user: User;
-  token: string;
-  expiresAt: Date;
 }
 
 // ============================================
