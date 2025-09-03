@@ -1,20 +1,25 @@
 /* frontend/src/styles/globals.css */
 
-/* TailwindCSSの基本ディレクティブ - これが最重要！ */
+/* TailwindCSSの基本ディレクティブ - 必須！ */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ===========================================
-   カスタムスタイル（TailwindCSSの後に記述）
-   =========================================== */
+/* =====================================
+   カスタムスタイル（TailwindCSSの後に）
+   ===================================== */
 
-/* アニメーション定義 */
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+/* 日本語フォント最適化 */
+@layer base {
+  body {
+    font-family: 'Hiragino Sans', 'ヒラギノ角ゴシック', 'Yu Gothic UI', 'Meiryo UI', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-feature-settings: "palt";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
 
+/* カスタムアニメーション */
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -36,93 +41,97 @@
   50% { transform: translateY(-10px); }
 }
 
-/* カスタムユーティリティクラス */
-.spinning {
-  animation: spin 1s linear infinite;
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
-.fade-in {
-  animation: fadeIn 0.5s ease-in-out;
+/* カスタムコンポーネント */
+@layer components {
+  .btn-primary {
+    @apply bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors;
+  }
+  
+  .card {
+    @apply bg-white rounded-lg shadow-sm border p-6;
+  }
+  
+  .input-field {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors;
+  }
+  
+  .modal-backdrop {
+    @apply fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
 }
 
-.slide-up {
-  animation: slideUp 0.3s ease-out;
+/* カスタムユーティリティ */
+@layer utilities {
+  .fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+  }
+
+  .slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+
+  .float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .spinning {
+    animation: spin 1s linear infinite;
+  }
+
+  .text-shadow {
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .hover-lift {
+    transition: transform 0.2s ease;
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-2px);
+  }
+
+  .glass {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background: rgba(255, 255, 255, 0.8);
+  }
 }
 
-.float {
-  animation: float 3s ease-in-out infinite;
-}
-
-/* 日本語フォント最適化 */
-body {
-  font-family: 'Hiragino Sans', 'ヒラギノ角ゴシック', 'Yu Gothic UI', 'Meiryo UI', 'Segoe UI', sans-serif;
-}
-
-/* スクロールバーのカスタマイズ */
+/* スクロールバーカスタマイズ */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
   background: #f1f5f9;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
 
-/* フォーカス時のアウトライン最適化 */
-.focus\:ring-blue-500:focus {
-  --tw-ring-color: rgb(59 130 246 / 0.5);
-}
-
-/* ボタンのホバーエフェクト強化 */
-.btn-hover-lift {
-  transition: all 0.2s ease;
-}
-
-.btn-hover-lift:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-/* グラデーション背景用のヘルパー */
-.gradient-bg {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-/* モーダル用の背景ブラー */
-.modal-backdrop {
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-}
-
-/* ローディングスピナー */
-.loader {
-  border: 2px solid #f3f4f6;
-  border-top: 2px solid #3b82f6;
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
-  animation: spin 1s linear infinite;
-}
-
-/* デバッグ用：TailwindCSSが読み込まれているかテスト */
-.debug-tailwind-test {
-  @apply bg-red-500 text-white p-4 rounded-lg;
-}
-
-/* レスポンシブデザイン調整 */
-@media (max-width: 640px) {
-  .mobile-full-width {
-    width: 100% !important;
-    max-width: none !important;
+/* プリント用スタイル */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  body {
+    background: white !important;
+    color: black !important;
   }
 }
