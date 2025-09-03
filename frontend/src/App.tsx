@@ -1,49 +1,14 @@
 // frontend/src/App.tsx - 完全版タスク管理システム
 import React, { useState } from 'react';
 import { 
-  Shield, Users, MessageSquare, Target, LogOut, Database, 
-  Eye, EyeOff, Lock, Mail, Settings, Calendar, Plus,
-  Search, Filter, User, Home, BarChart3, Bell, Menu, X
+  Shield, Users, MessageSquare, Target, LogOut,
+  Settings, Calendar, Plus, Home, BarChart3, Bell, Menu, X,
+  Eye, EyeOff, Lock, Mail, User
 } from 'lucide-react';
 
 // コンポーネントのインポート
 import TaskManagement from './components/TaskManagement';
 import AdminPanel from './components/AdminPanel';
-
-// TailwindCSSテスト用コンポーネント
-const TestTailwindCSS: React.FC = () => {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-md mx-auto">
-        <div className="bg-white rounded-2xl shadow-xl border p-8">
-          <div className="text-center mb-8">
-            <div className="mx-auto w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-4">
-              <Database className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-gray-900">TailwindCSS テスト</h1>
-            <p className="text-gray-600 mt-2">スタイルが適用されていれば成功です</p>
-          </div>
-          
-          <div className="space-y-4">
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <h3 className="font-medium text-blue-900">ブルーカード</h3>
-              <p className="text-sm text-blue-700 mt-1">TailwindCSSが正しく動作しています</p>
-            </div>
-            
-            <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-              <h3 className="font-medium text-green-900">グリーンカード</h3>
-              <p className="text-sm text-green-700 mt-1">レスポンシブデザインも機能しています</p>
-            </div>
-            
-            <button className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
-              テストボタン
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // メインアプリケーション
 const TaskManagementApp: React.FC = () => {
@@ -434,7 +399,7 @@ const TaskManagementApp: React.FC = () => {
           {/* メインコンテンツエリア */}
           <main className="flex-1 p-4 lg:p-6 overflow-auto">
             {activeScreen === 'dashboard' && <DashboardScreen />}
-            {activeScreen === 'tasks' && <TaskManagement />}
+            {activeScreen === 'tasks' && <TaskManagement currentUser={currentUser} />}
             {activeScreen === 'admin' && currentUser?.role === 'admin' && <AdminPanel />}
           </main>
         </div>
@@ -451,23 +416,7 @@ const TaskManagementApp: React.FC = () => {
 
 // メインAppコンポーネント
 const App: React.FC = () => {
-  const [showTest, setShowTest] = useState(false);
-
-  return (
-    <>
-      {/* テスト切り替えボタン（開発用） */}
-      <div className="fixed top-4 right-4 z-50">
-        <button
-          onClick={() => setShowTest(!showTest)}
-          className="px-3 py-2 bg-gray-800 text-white text-xs rounded-md hover:bg-gray-700 transition-colors"
-        >
-          {showTest ? 'アプリ表示' : 'CSSテスト'}
-        </button>
-      </div>
-      
-      {showTest ? <TestTailwindCSS /> : <TaskManagementApp />}
-    </>
-  );
+  return <TaskManagementApp />;
 };
 
 export default App;
